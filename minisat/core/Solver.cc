@@ -24,6 +24,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "minisat/mtl/Sort.h"
 #include "minisat/utils/System.h"
 #include "minisat/core/Solver.h"
+#include "minisat/core/SolverTypes.h"
 
 using namespace Minisat;
 
@@ -83,6 +84,10 @@ Solver::Solver() :
     //
   , solves(0), starts(0), decisions(0), rnd_decisions(0), propagations(0), conflicts(0)
   , dec_vars(0), num_clauses(0), num_learnts(0), clauses_literals(0), learnts_literals(0), max_literals(0), tot_literals(0)
+
+  , decision_level_logfile ("decision_level.log")
+  , acc_decision_level(0)
+  , acc_decision_time (0)
 
   , watches            (WatcherDeleted(ca))
   , order_heap         (VarOrderLt(activity))
@@ -275,6 +280,18 @@ Lit Solver::pickBranchLit()
         return mkLit(next, polarity[next]);
 }
 
+void Solver::log_decision_level(bool reset = false) {
+  if (reset) { acc_decision_time = acc_decision_level = 0; }
+  acc_decision_time ++;
+  acc_decision_level += decisionLevel();
+}
+
+void Solver::print_average_decision_level() {
+  decision_level_logfile << 
+         (double) acc_decision_level / acc_decision_time << std::endl;
+  printf("avg decision lvl: %lf\n",
+         (double) acc_decision_level / acc_decision_time);
+}
 
 /*_________________________________________________________________________________________________
 |
@@ -302,6 +319,14 @@ void Solver::analyze(CRef confl, vec<Lit>& out_learnt, int& out_btlevel)
     //
     out_learnt.push();      // (leave room for the asserting literal)
     int index   = trail.size() - 1;
+
+
+    if (acc_decision_time == 1000) {
+      print_average_decision_level();
+      log_decision_level(true);
+    } else {
+      log_decision_level();
+    }
 
     do{
         assert(confl != CRef_Undef); // (otherwise should be UIP)

@@ -21,6 +21,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #ifndef Minisat_Solver_h
 #define Minisat_Solver_h
 
+#include <fstream>
+
 #include "minisat/mtl/Vec.h"
 #include "minisat/mtl/Heap.h"
 #include "minisat/mtl/Alg.h"
@@ -47,12 +49,12 @@ public:
     Var     newVar    (lbool upol = l_Undef, bool dvar = true); // Add a new variable with parameters specifying variable mode.
     void    releaseVar(Lit l);                                  // Make literal true and promise to never refer to variable again.
 
-    bool    addClause (const vec<Lit>& ps);                     // Add a clause to the solver. 
+    bool    addClause (const vec<Lit>& ps);                     // Add a clause to the solver.
     bool    addEmptyClause();                                   // Add the empty clause, making the solver contradictory.
-    bool    addClause (Lit p);                                  // Add a unit clause to the solver. 
-    bool    addClause (Lit p, Lit q);                           // Add a binary clause to the solver. 
-    bool    addClause (Lit p, Lit q, Lit r);                    // Add a ternary clause to the solver. 
-    bool    addClause (Lit p, Lit q, Lit r, Lit s);             // Add a quaternary clause to the solver. 
+    bool    addClause (Lit p);                                  // Add a unit clause to the solver.
+    bool    addClause (Lit p, Lit q);                           // Add a binary clause to the solver.
+    bool    addClause (Lit p, Lit q, Lit r);                    // Add a ternary clause to the solver.
+    bool    addClause (Lit p, Lit q, Lit r, Lit s);             // Add a quaternary clause to the solver.
     bool    addClause_(      vec<Lit>& ps);                     // Add a clause to the solver without making superflous internal copy. Will
                                                                 // change the passed vector 'ps'.
 
@@ -84,9 +86,9 @@ public:
     void    toDimacs     (const char* file, Lit p);
     void    toDimacs     (const char* file, Lit p, Lit q);
     void    toDimacs     (const char* file, Lit p, Lit q, Lit r);
-    
+
     // Variable mode:
-    // 
+    //
     void    setPolarity    (Var v, lbool b); // Declare which polarity the decision heuristic should use for a variable. Requires mode 'polarity_user'.
     void    setDecisionVar (Var v, bool b);  // Declare if a variable should be eligible for selection in the decision heuristic.
 
@@ -151,7 +153,13 @@ public:
     uint64_t solves, starts, decisions, rnd_decisions, propagations, conflicts;
     uint64_t dec_vars, num_clauses, num_learnts, clauses_literals, learnts_literals, max_literals, tot_literals;
 
+    std::fstream decision_level_logfile;
+    uint64_t acc_decision_level;
+    uint64_t acc_decision_time;
 protected:
+
+    void log_decision_level(bool);
+    void print_average_decision_level();
 
     // Helper structures:
     //
@@ -358,8 +366,8 @@ inline int      Solver::nVars         ()      const   { return next_var; }
 // TODO: nFreeVars() is not quite correct, try to calculate right instead of adapting it like below:
 inline int      Solver::nFreeVars     ()      const   { return (int)dec_vars - (trail_lim.size() == 0 ? trail.size() : trail_lim[0]); }
 inline void     Solver::setPolarity   (Var v, lbool b){ user_pol[v] = b; }
-inline void     Solver::setDecisionVar(Var v, bool b) 
-{ 
+inline void     Solver::setDecisionVar(Var v, bool b)
+{
     if      ( b && !decision[v]) dec_vars++;
     else if (!b &&  decision[v]) dec_vars--;
 
@@ -390,7 +398,7 @@ inline bool     Solver::okay          ()      const   { return ok; }
 inline ClauseIterator Solver::clausesBegin() const { return ClauseIterator(ca, &clauses[0]); }
 inline ClauseIterator Solver::clausesEnd  () const { return ClauseIterator(ca, &clauses[clauses.size()]); }
 inline TrailIterator  Solver::trailBegin  () const { return TrailIterator(&trail[0]); }
-inline TrailIterator  Solver::trailEnd    () const { 
+inline TrailIterator  Solver::trailEnd    () const {
     return TrailIterator(&trail[decisionLevel() == 0 ? trail.size() : trail_lim[0]]); }
 
 inline void     Solver::toDimacs     (const char* file){ vec<Lit> as; toDimacs(file, as); }
