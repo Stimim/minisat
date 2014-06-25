@@ -46,6 +46,7 @@ static IntOption     opt_restart_first     (_cat, "rfirst",      "The base resta
 static DoubleOption  opt_restart_inc       (_cat, "rinc",        "Restart interval increase factor", 2, DoubleRange(1, false, HUGE_VAL, false));
 static DoubleOption  opt_garbage_frac      (_cat, "gc-frac",     "The fraction of wasted memory allowed before a garbage collection is triggered",  0.20, DoubleRange(0, false, HUGE_VAL, false));
 static IntOption     opt_min_learnts_lim   (_cat, "min-learnts", "Minimum learnt clause limit",  0, IntRange(0, INT32_MAX));
+static StringOption  opt_logfile_name          (_cat, "logfile", "name of the logfile", "logfile");
 
 
 //=================================================================================================
@@ -85,7 +86,7 @@ Solver::Solver() :
   , solves(0), starts(0), decisions(0), rnd_decisions(0), propagations(0), conflicts(0)
   , dec_vars(0), num_clauses(0), num_learnts(0), clauses_literals(0), learnts_literals(0), max_literals(0), tot_literals(0)
 
-  , decision_level_logfile ("decision_level.log")
+  , decision_level_logfile (opt_logfile_name, std::ios::out)
   , acc_decision_level(0)
   , acc_decision_time (0)
 
@@ -289,8 +290,6 @@ void Solver::log_decision_level(bool reset = false) {
 void Solver::print_average_decision_level() {
   decision_level_logfile << 
          (double) acc_decision_level / acc_decision_time << std::endl;
-  printf("avg decision lvl: %lf\n",
-         (double) acc_decision_level / acc_decision_time);
 }
 
 /*_________________________________________________________________________________________________
