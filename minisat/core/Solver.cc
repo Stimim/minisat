@@ -46,7 +46,8 @@ static IntOption     opt_restart_first     (_cat, "rfirst",      "The base resta
 static DoubleOption  opt_restart_inc       (_cat, "rinc",        "Restart interval increase factor", 2, DoubleRange(1, false, HUGE_VAL, false));
 static DoubleOption  opt_garbage_frac      (_cat, "gc-frac",     "The fraction of wasted memory allowed before a garbage collection is triggered",  0.20, DoubleRange(0, false, HUGE_VAL, false));
 static IntOption     opt_min_learnts_lim   (_cat, "min-learnts", "Minimum learnt clause limit",  0, IntRange(0, INT32_MAX));
-static StringOption  opt_logfile_name          (_cat, "logfile", "name of the logfile", "logfile");
+static StringOption  opt_logfile_name      (_cat, "logfile", "name of the logfile", "logfile");
+static BoolOption    opt_use_grobner_basis (_cat, "use-gb", "using grobner basis for clause learning", false);
 
 
 //=================================================================================================
@@ -89,6 +90,7 @@ Solver::Solver() :
   , decision_level_logfile (opt_logfile_name, std::ios::out)
   , acc_decision_level(0)
   , acc_decision_time (0)
+  , gbAnalyzer        (NULL)
 
   , watches            (WatcherDeleted(ca))
   , order_heap         (VarOrderLt(activity))
@@ -112,6 +114,7 @@ Solver::Solver() :
 
 Solver::~Solver()
 {
+  delete gbAnalyzer;
 }
 
 
@@ -318,7 +321,6 @@ void Solver::analyze(CRef confl, vec<Lit>& out_learnt, int& out_btlevel)
     //
     out_learnt.push();      // (leave room for the asserting literal)
     int index   = trail.size() - 1;
-
 
     if (acc_decision_time == 1000) {
       print_average_decision_level();
@@ -709,6 +711,131 @@ bool Solver::simplify()
     return true;
 }
 
+bool Solver::analyze_with_gb(CRef confl,
+                             std::vector<std::vector<Lit> >& gb_learnt,
+                             vec<Lit>& dpll,
+                             int& out_btlevel) {
+  std::vector<std::vector<Lit> > reasons;
+  std::vector<Lit> rea;
+
+  int pathC = 0;
+  Lit p = lit_Undef;
+  int index = trail.size() - 1;
+
+  dpll.push();
+
+  do {
+    assert (confl != CRef_Undef);
+    Clause& c = ca[confl];
+
+    if (c.learnt()) claBumpActivity(c);
+
+    for (int j = (p == lit_Undef) ? 0 : 1; j < c.size(); ++ j) {
+      Lit q = c[j];
+      if (!seen[var(q)] && level(var(q)) > 0) {
+        varBumpActivity(var(q));
+        seen[var(q)] = 1;
+        if (level(var(q)) >= decisionLevel()) pathC ++;
+        else dpll.push(q);
+      }
+    }
+
+    if (c.size() < 4 && reasons.size() < 16) {
+      rea.clear();
+      for (int j = 0; j < c.size(); ++ j) {
+        Lit q = c[j];
+        rea.push_back(q);
+      }
+      reasons.push_back(rea);
+    }
+
+    while (!seen[var(trail[index --])]);
+    p = trail[index + 1];
+    confl = reason(var(p));
+    seen[var(p)] = 0;
+    pathC --;
+  } while (pathC > 0);
+
+  dpll[0] = ~p;
+
+
+  int i, j;
+  dpll.copyTo(analyze_toclear);
+  if (ccmin_mode == 2) {
+    for (i = j = 1; i < dpll.size(); i ++) {
+      if (reason(var(dpll[i])) == CRef_Undef ||
+          !litRedundant(dpll[i])) {
+        dpll[j ++] = dpll[i];
+      }
+    }
+  } else if (ccmin_mode == 1) {
+    for (i = j = 1; i < dpll.size(); i++) {
+      Var x = var(dpll[i]);
+
+      if (reason(x) == CRef_Undef) {
+        dpll[j++] = dpll[i];
+      } else {
+        Clause& c = ca[reason(var(dpll[i]))];
+        for (int k = 1; k < c.size(); k++) {
+          if (!seen[var(c[k])] && level(var(c[k])) > 0) {
+            dpll[j++] = dpll[i];
+            break;
+          }
+        }
+      }
+    }
+  } else {
+    i = j = dpll.size();
+  }
+
+  max_literals += dpll.size();
+  dpll.shrink(i - j);
+  tot_literals += dpll.size();
+
+  if (dpll.size() == 1)
+    out_btlevel = 0;
+  else {
+    int max_i = 1;
+    for (int i = 2; i < dpll.size(); ++ i)
+      if (level(var(dpll[i])) > level(var(dpll[max_i])))
+        max_i = i;
+    Lit p = dpll[max_i];
+    dpll[max_i] = dpll[1];
+    dpll[1] = p;
+    out_btlevel = level(var(p));
+  }
+
+  for (int j = 0; j < analyze_toclear.size(); ++ j)
+    seen[var(analyze_toclear[j])] = 0;
+
+  rea.clear();
+  for (int i = 0; i < dpll.size(); ++ i)
+    rea.push_back(dpll[i]);
+  reasons.push_back(rea);
+
+  gb_learnt.clear();
+  
+  GroebnerBasis::Analyzer::ReturnCode retval;
+  retval = gbAnalyzer->analyze(reasons, gb_learnt, activity);
+
+  switch (retval) {
+    case GroebnerBasis::Analyzer::CONST_1: // UNSAT
+      out_btlevel = 0;
+      gb_learnt.clear();
+      rea.clear();
+      rea.push_back(mkLit(0, false));
+      gb_learnt.push_back(rea);
+      rea.clear();
+      rea.push_back(mkLit(0, true));
+      gb_learnt.push_back(rea);
+    case GroebnerBasis::Analyzer::CONST_0:
+    case GroebnerBasis::Analyzer::SKIPPED:
+    case GroebnerBasis::Analyzer::OTHER:
+      break;
+  }
+
+  return true;
+}
 
 /*_________________________________________________________________________________________________
 |
@@ -731,6 +858,8 @@ lbool Solver::search(int nof_conflicts)
     vec<Lit>    learnt_clause;
     starts++;
 
+    std::vector<std::vector<Lit> > gb_learnt;
+
     for (;;){
         CRef confl = propagate();
         if (confl != CRef_Undef){
@@ -738,8 +867,33 @@ lbool Solver::search(int nof_conflicts)
             conflicts++; conflictC++;
             if (decisionLevel() == 0) return l_False;
 
-            learnt_clause.clear();
-            analyze(confl, learnt_clause, backtrack_level);
+            if (opt_use_grobner_basis &&
+                gbAnalyzer->check_clock(conflicts, starts)) {
+              gb_learnt.clear();
+              learnt_clause.clear();
+              analyze_with_gb(confl, gb_learnt, learnt_clause, backtrack_level);
+              vec<Lit> learnt_i;
+              for (size_t i = 0; i < gb_learnt.size(); ++ i) {
+                learnt_i.clear();
+                for (size_t j = 0; j < gb_learnt[i].size(); ++ j) {
+                  Lit q = gb_learnt[i][j];
+                  learnt_i.push(q);
+                }
+
+                if (learnt_i.size() == 1) {
+                  uncheckedEnqueue(learnt_i[0]);
+                } else {
+                  CRef cr = ca.alloc(learnt_i, true);
+                  learnts.push(cr);
+                  attachClause(cr);
+                  for (int j = 0; j < 10; ++ j)
+                    claBumpActivity(ca[cr]);
+                }
+              }
+            } else {
+              learnt_clause.clear();
+              analyze(confl, learnt_clause, backtrack_level);
+            }
             cancelUntil(backtrack_level);
 
             if (learnt_clause.size() == 1){
@@ -865,6 +1019,11 @@ lbool Solver::solve_()
     model.clear();
     conflict.clear();
     if (!ok) return l_False;
+
+    if (opt_use_grobner_basis) {
+      delete gbAnalyzer;
+      gbAnalyzer = new GroebnerBasis::Analyzer(nVars());
+    }
 
     solves++;
 

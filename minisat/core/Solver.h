@@ -30,6 +30,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "minisat/utils/Options.h"
 #include "minisat/core/SolverTypes.h"
 
+#include "minisat/core/gbanalyzer.h"
 
 namespace Minisat {
 
@@ -156,10 +157,13 @@ public:
     std::fstream decision_level_logfile;
     uint64_t acc_decision_level;
     uint64_t acc_decision_time;
+
+    GroebnerBasis::Analyzer* gbAnalyzer;
 protected:
 
     void log_decision_level(bool);
     void print_average_decision_level();
+    bool analyze_with_gb(CRef, std::vector<std::vector<Lit> >&, vec<Lit>&, int&);
 
     // Helper structures:
     //
