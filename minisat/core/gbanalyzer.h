@@ -41,7 +41,7 @@ struct Analyzer {
 
   std::vector<double> activity;
 
-  Analyzer(size_t nVar) : ring(nVar, polybori::COrderEnums::dlex), cacheMgr(), activity(nVar, 1) {}
+  Analyzer(size_t nVar) : ring(5000, polybori::COrderEnums::dlex), cacheMgr(), activity(nVar, 1) {}
 
   void reorder_vars(std::vector<Minisat::Var>& vars,
                     const Minisat::VMap<double>& solver_act) {
@@ -164,14 +164,11 @@ struct Analyzer {
     strat.optLinearAlgebraInLastBlock = true;
   }
 
-
-
-
-  static const double THRES = 2.0;
+  static Minisat::DoubleOption opt_thres;
 
   bool skip_this_time(const std::vector<std::vector<Minisat::Lit> >& reasons,
                       const std::vector<Minisat::Var>& vars) const {
-    if ((double) vars.size() / reasons.size() > THRES) {
+    if ((double) vars.size() / reasons.size() > opt_thres) {
       return true;
     }
     return false;

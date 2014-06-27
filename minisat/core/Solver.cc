@@ -48,7 +48,9 @@ static DoubleOption  opt_garbage_frac      (_cat, "gc-frac",     "The fraction o
 static IntOption     opt_min_learnts_lim   (_cat, "min-learnts", "Minimum learnt clause limit",  0, IntRange(0, INT32_MAX));
 static StringOption  opt_logfile_name      (_cat, "logfile", "name of the logfile", "logfile");
 static BoolOption    opt_use_grobner_basis (_cat, "use-gb", "using grobner basis for clause learning", false);
+static IntOption     opt_act_gb            (_cat, "act-gb", "initial activity for clauses learnt by gb", 10, IntRange(0, 10000));
 
+DoubleOption GroebnerBasis::Analyzer::opt_thres (_cat, "threshold", "threshold for gb analyze", 2.0, DoubleRange(0, false, HUGE_VAL, false));
 
 //=================================================================================================
 // Constructor/Destructor:
@@ -722,6 +724,13 @@ bool Solver::analyze_with_gb(CRef confl,
   Lit p = lit_Undef;
   int index = trail.size() - 1;
 
+  if (acc_decision_time == 1000) {
+    print_average_decision_level();
+    log_decision_level(true);
+  } else {
+    log_decision_level();
+  }
+
   dpll.push();
 
   do {
@@ -886,7 +895,7 @@ lbool Solver::search(int nof_conflicts)
                   CRef cr = ca.alloc(learnt_i, true);
                   learnts.push(cr);
                   attachClause(cr);
-                  for (int j = 0; j < 10; ++ j)
+                  for (int j = 0; j < opt_act_gb; ++ j)
                     claBumpActivity(ca[cr]);
                 }
               }
